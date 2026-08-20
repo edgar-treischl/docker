@@ -1,0 +1,49 @@
+# Use published Qacker image from GitHub Container Registry
+image: ghcr.io/edgar-treischl/qacker:latest
+
+stages:
+  - build
+  - deploy
+
+# Build and render Quarto documents
+build_html:
+  stage: build
+  before_script:
+    # Install additional packages if needed (remotes is already in the image)
+    # - R -e "remotes::install_cran(c('tidyverse', 'sf'), repos='https://cloud.r-project.org')"
+    # Authenticate with GitLab for private package access
+    - export GITLAB_PAT=$GITLAB_PAT
+    - R -e 'remotes::install_gitlab("qa1/dpro/products/bildungsbericht", host="gitlab.lrz.de", auth_token = Sys.getenv("GITLAB_PAT"))'
+
+  script:
+    - echo "Rendering Quarto project..."
+    - quarto render --to html
+  
+  artifacts:
+    name: "quarto-book-$CI_COMMIT_SHORT_SHA"
+    paths:
+      - _book/
+    expire_in: 1 week
+  
+  only:
+    - main
+    - merge_requests
+    - tags
+
+# Deploy to GitLab Pages
+pages:
+  stage: deploy
+  needs:
+    - job: build_html
+      artifacts: true
+  
+  script:
+    - echo "Preparing documentation for GitLab Pages..."
+    - mv _book public
+  
+  artifacts:
+    paths:
+      - public/
+  
+  rules:
+    - if: '$CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH'
